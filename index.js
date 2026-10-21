@@ -38,10 +38,9 @@ async function loginAll() {
       bots[name] = client;
     } catch (e) {
       console.error(`[${name}] ล็อกอินไม่ผ่าน (${e.code || e.message}) — เช็กค่า ${key} บน Render (ต้องเป็น Bot Token จากหน้า Bot ไม่ใช่ Client Secret) ความยาวที่อ่านได้ = ${token.length}`);
-      if (name === "rin") throw e;
     }
   }
-  if (!bots.rin) throw new Error("ต้องมี RIN_TOKEN ที่ถูกต้อง (Rin เป็นตัวเข้าห้องเสียงและรับ /play)");
+  if (!bots.rin) console.error("⚠️ Rin ล็อกอินไม่ได้ — /play จะใช้ไม่ได้จนกว่าจะแก้ RIN_TOKEN (บอทตัวอื่นยังออนไลน์อยู่)");
 }
 
 // ---------- ส่งข้อความ ----------
@@ -107,6 +106,7 @@ async function main() {
 
   await loginAll();
   const rin = bots.rin;
+  if (!rin) return; // เว็บเซิร์ฟเวอร์ยังรันอยู่ บอทตัวอื่นออนไลน์ต่อ
 
   const register = async (guild) => {
     await guild.commands.create({ name: "play", description: "ให้ Vocaloid ร้องเพลง Blessing 🎤" })

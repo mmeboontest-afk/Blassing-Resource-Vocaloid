@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: vocaloid-blessing
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - { key: MIKU_TOKEN,  sync: false }
+      - { key: LEN_TOKEN,   sync: false }
+      - { key: RIN_TOKEN,   sync: false }
+      - { key: LUKA_TOKEN,  sync: false }
+      - { key: KAITO_TOKEN, sync: false }
+      - { key: MEIKO_TOKEN, sync: false }

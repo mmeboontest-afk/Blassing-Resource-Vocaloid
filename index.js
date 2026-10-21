@@ -1,0 +1,110 @@
+const http = require("http");
+const path = require("path");
+const { Client, GatewayIntentBits, Events, MessageFlags } = require("discord.js");
+const {
+  joinVoiceChannel, createAudioPlayer, createAudioResource,
+  AudioPlayerStatus, VoiceConnectionStatus, entersState, StreamType,
+} = require("@discordjs/voice");
+const LYRICS = require("./lyrics");
+
+process.env.FFMPEG_PATH = process.env.FFMPEG_PATH || require("ffmpeg-static");
+
+const SONG = path.join(__dirname, "song.mp3");
+const COUNTDOWN_MS = 5000;                                   // /play แล้วรอ 5 วิ
+const OFFSET_MS = Number(process.env.LYRIC_OFFSET_MS ?? -250); // ชดเชย latency ของ Discord
+
+const NAMES = ["miku", "len", "rin", "luka", "kaito", "meiko"];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- ล็อกอินบอททั้ง 6 ตัว ----------
+const bots = {};
+async function loginAll() {
+  for (const name of NAMES) {
+    const token = process.env[`${name.toUpperCase()}_TOKEN`];
+    if (!token) { console.warn(`[${name}] ไม่มี ${name.toUpperCase()}_TOKEN — ข้าม`); continue; }
+    const intents = [GatewayIntentBits.Guilds];
+    if (name === "rin") intents.push(GatewayIntentBits.GuildVoiceStates);
+    const client = new Client({ intents });
+    client.once(Events.ClientReady, (c) => console.log(`[${name}] พร้อมแล้ว: ${c.user.tag}`));
+    await client.login(token);
+    bots[name] = client;
+  }
+  if (!bots.rin) throw new Error("ต้องมี RIN_TOKEN (Rin เป็นตัวเข้าห้องเสียงและรับ /play)");
+}
+
+// ---------- ส่งข้อความ ----------
+async function say(who, channelId, text) {
+  const targets = who === "all" ? Object.keys(bots) : [who];
+  await Promise.all(targets.map(async (n) => {
+    try {
+      const ch = await bots[n]?.channels.fetch(channelId);
+      await ch.send({ content: text, allowedMentions: { parse: [] } });
+    } catch (e) { console.error(`[${n}] ส่งไม่ได้:`, e.message); }
+  }));
+}
+
+// ---------- ล็อกกันกด /play ซ้อน ----------
+let busy = false;
+
+async function handlePlay(interaction) {
+  if (busy) return interaction.reply({ content: "กำลังร้องอยู่ รอจบก่อนนะ 🎤", flags: MessageFlags.Ephemeral });
+  const vc = interaction.member?.voice?.channel;
+  if (!vc) return interaction.reply({ content: "เข้าห้องเสียงก่อนแล้วค่อยพิมพ์ /play นะ", flags: MessageFlags.Ephemeral });
+
+  busy = true;
+  const channelId = interaction.channelId;
+  let connection;
+  try {
+    await interaction.reply(`🎶 Rin เข้าห้อง **${vc.name}** แล้ว — เริ่มใน 5 วินาที!`);
+
+    connection = joinVoiceChannel({
+      channelId: vc.id, guildId: vc.guild.id,
+      adapterCreator: vc.guild.voiceAdapterCreator, selfDeaf: true,
+    });
+    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+
+    const player = createAudioPlayer();
+    connection.subscribe(player);
+    const resource = createAudioResource(SONG, { inputType: StreamType.Arbitrary });
+
+    await sleep(COUNTDOWN_MS);
+    player.play(resource);
+    await entersState(player, AudioPlayerStatus.Playing, 10_000);
+
+    // นาฬิกาเริ่มนับตอนเสียงเริ่มเล่นจริง
+    const t0 = Date.now();
+    for (const line of LYRICS) {
+      setTimeout(() => say(line.who, channelId, line.text),
+        Math.max(0, line.t * 1000 + OFFSET_MS - (Date.now() - t0)));
+    }
+
+    await entersState(player, AudioPlayerStatus.Idle, 120_000);
+    await sleep(1500);
+  } catch (e) {
+    console.error(e);
+    interaction.followUp?.({ content: `มีปัญหา: ${e.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  } finally {
+    connection?.destroy();
+    busy = false;
+  }
+}
+
+async function main() {
+  // เว็บเล็ก ๆ ให้ Render ตรวจ port (Web Service)
+  http.createServer((_, res) => res.end("Blessing bots alive")).listen(process.env.PORT || 3000);
+
+  await loginAll();
+  const rin = bots.rin;
+
+  const register = async (guild) => {
+    await guild.commands.create({ name: "play", description: "ให้ Vocaloid ร้องเพลง Blessing 🎤" })
+      .catch((e) => console.error("ลงทะเบียนคำสั่งไม่ได้:", e.message));
+  };
+  rin.guilds.cache.forEach(register);
+  rin.on(Events.GuildCreate, register);
+
+  rin.on(Events.InteractionCreate, (i) => {
+    if (i.isChatInputCommand() && i.commandName === "play") handlePlay(i);
+  });
+}
+main().catch((e) => { console.error(e); process.exit(1); });

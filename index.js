@@ -24,6 +24,11 @@ async function loginAll() {
     // ตัดช่องว่าง/ขึ้นบรรทัดใหม่/เครื่องหมายคำพูดที่เผลอใส่มา
     const token = (process.env[key] || "").trim().replace(/^["']|["']$/g, "").replace(/^Bot\s+/i, "");
     if (!token) { console.warn(`[${name}] ไม่มี ${key} — ข้าม`); continue; }
+    // วินิจฉัย: ส่วนแรกของโทเค็น = ID ของบอท (ไม่ใช่ความลับ) ใช้เทียบกับ Application ID ใน Developer Portal
+    const parts = token.split(".");
+    let botId = "?";
+    try { botId = Buffer.from(parts[0], "base64").toString(); } catch {}
+    console.log(`[${name}] ${key}: ${parts.length} ส่วน, ยาว ${token.length}, bot ID = ${botId}`);
     const intents = [GatewayIntentBits.Guilds];
     if (name === "rin") intents.push(GatewayIntentBits.GuildVoiceStates);
     const client = new Client({ intents });

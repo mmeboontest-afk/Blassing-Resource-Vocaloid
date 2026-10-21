@@ -20,16 +20,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const bots = {};
 async function loginAll() {
   for (const name of NAMES) {
-    const token = process.env[`${name.toUpperCase()}_TOKEN`];
-    if (!token) { console.warn(`[${name}] ไม่มี ${name.toUpperCase()}_TOKEN — ข้าม`); continue; }
+    const key = `${name.toUpperCase()}_TOKEN`;
+    // ตัดช่องว่าง/ขึ้นบรรทัดใหม่/เครื่องหมายคำพูดที่เผลอใส่มา
+    const token = (process.env[key] || "").trim().replace(/^["']|["']$/g, "").replace(/^Bot\s+/i, "");
+    if (!token) { console.warn(`[${name}] ไม่มี ${key} — ข้าม`); continue; }
     const intents = [GatewayIntentBits.Guilds];
     if (name === "rin") intents.push(GatewayIntentBits.GuildVoiceStates);
     const client = new Client({ intents });
     client.once(Events.ClientReady, (c) => console.log(`[${name}] พร้อมแล้ว: ${c.user.tag}`));
-    await client.login(token);
-    bots[name] = client;
+    try {
+      await client.login(token);
+      bots[name] = client;
+    } catch (e) {
+      console.error(`[${name}] ล็อกอินไม่ผ่าน (${e.code || e.message}) — เช็กค่า ${key} บน Render (ต้องเป็น Bot Token จากหน้า Bot ไม่ใช่ Client Secret) ความยาวที่อ่านได้ = ${token.length}`);
+      if (name === "rin") throw e;
+    }
   }
-  if (!bots.rin) throw new Error("ต้องมี RIN_TOKEN (Rin เป็นตัวเข้าห้องเสียงและรับ /play)");
+  if (!bots.rin) throw new Error("ต้องมี RIN_TOKEN ที่ถูกต้อง (Rin เป็นตัวเข้าห้องเสียงและรับ /play)");
 }
 
 // ---------- ส่งข้อความ ----------

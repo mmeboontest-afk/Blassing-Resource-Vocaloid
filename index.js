@@ -54,6 +54,27 @@ async function say(who, channelId, text) {
   }));
 }
 
+// ---------- /delete : ให้บอททุกตัวลบข้อความของตัวเองในห้องนี้ ----------
+async function handleDelete(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const channelId = interaction.channelId;
+  let total = 0;
+  await Promise.all(Object.entries(bots).map(async ([n, client]) => {
+    try {
+      const ch = await client.channels.fetch(channelId);
+      for (let round = 0; round < 5; round++) { // สูงสุด ~500 ข้อความ/ตัว
+        const msgs = await ch.messages.fetch({ limit: 100 });
+        const mine = msgs.filter((m) => m.author.id === client.user.id);
+        if (mine.size === 0) break;
+        for (const m of mine.values()) {
+          await m.delete().then(() => total++).catch(() => {});
+        }
+      }
+    } catch (e) { console.error(`[${n}] ลบไม่ได้:`, e.message); }
+  }));
+  await interaction.editReply(`🧹 ลบข้อความของบอทไปแล้ว ${total} ข้อความ`).catch(() => {});
+}
+
 // ---------- ล็อกกันกด /play ซ้อน ----------
 let busy = false;
 
@@ -109,14 +130,19 @@ async function main() {
   if (!rin) return; // เว็บเซิร์ฟเวอร์ยังรันอยู่ บอทตัวอื่นออนไลน์ต่อ
 
   const register = async (guild) => {
-    await guild.commands.create({ name: "play", description: "ให้ Vocaloid ร้องเพลง Blessing 🎤" })
+    await guild.commands.set([
+      { name: "play", description: "ให้ Vocaloid ร้องเพลง Blessing 🎤" },
+      { name: "delete", description: "ลบข้อความเนื้อเพลงที่บอทส่งไว้ในห้องนี้ 🧹" },
+    ])
       .catch((e) => console.error("ลงทะเบียนคำสั่งไม่ได้:", e.message));
   };
   rin.guilds.cache.forEach(register);
   rin.on(Events.GuildCreate, register);
 
   rin.on(Events.InteractionCreate, (i) => {
-    if (i.isChatInputCommand() && i.commandName === "play") handlePlay(i);
+    if (!i.isChatInputCommand()) return;
+    if (i.commandName === "play") handlePlay(i);
+    else if (i.commandName === "delete") handleDelete(i);
   });
 }
 main().catch((e) => { console.error(e); process.exit(1); });
